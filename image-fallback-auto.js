@@ -1,47 +1,30 @@
-(function () {
-  const sourceFile = 'image-sources.json';
-  let families = {};
-
-  function familyForText(text) {
-    const value = String(text || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    return Object.keys(families).sort((a, b) => b.length - a.length).find((key) => value.includes(key));
-  }
-
-  function addSource(node) {
-    if (!node || node.querySelector('[data-image-fallback-source]')) return;
-    const family = familyForText(node.textContent);
-    if (!family || !families[family]) return;
-    const link = document.createElement('a');
-    link.dataset.imageFallbackSource = 'true';
-    link.href = families[family];
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.textContent = `Fonte catalogo ${family} (immagine rappresentativa)`;
-    link.style.display = 'block';
-    link.style.marginTop = '6px';
-    link.style.fontSize = '12px';
-    node.appendChild(link);
-  }
-
-  async function init() {
-    try {
-      const response = await fetch(sourceFile, { cache: 'no-store' });
-      if (!response.ok) return;
-      const data = await response.json();
-      families = data.families || {};
-      document.querySelectorAll('article, .card, .product, .item, [data-product], [data-insert]').forEach(addSource);
-      new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => mutation.addedNodes.forEach((node) => {
-          if (node.nodeType !== 1) return;
-          addSource(node);
-          node.querySelectorAll?.('article, .card, .product, .item, [data-product], [data-insert]').forEach(addSource);
-        }));
-      }).observe(document.body, { childList: true, subtree: true });
-    } catch (error) {
-      console.warn('Image fallback integration unavailable', error);
+(() => {
+  const isImage = (el) => el instanceof HTMLImageElement && (el.classList.contains('recDraw') || el.classList.contains('modalImg'));
+  const next = (img) => {
+    const raw = img.dataset.photoCandidates || '[]';
+    let candidates = [];
+    try { candidates = JSON.parse(decodeURIComponent(raw)); } catch (_) {}
+    const index = Number(img.dataset.photoFallbackIndex || 0);
+    if (index + 1 < candidates.length) {
+      img.dataset.photoFallbackIndex = String(index + 1);
+      img.src = candidates[index + 1];
+      return;
     }
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+    img.style.display = 'none';
+    const parent = img.closest('.photoWrap, .photoWrap, .insertPreviewFrame');
+    if (parent && !parent.querySelector('.photoEmpty')) {
+      const empty = document.createElement('div');
+      empty.className = 'photoEmpty';
+      empty.textContent = 'Foto non raggiungibile. Apri la scheda del produttore.';
+      parent.insertBefore(empty, img);
+    }
+  };
+  document.addEventListener('error', (event) => {
+    if (isImage(event.target)) next(event.target);
+  }, true);
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('img.recDraw, img.modalImg').forEach((img) => {
+      img.addEventListener('error', () => next(img), { once: false });
+    });
+  });
 })();
